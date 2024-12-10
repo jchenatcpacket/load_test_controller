@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -27,20 +28,22 @@ func spawnLoadTest(ctx context.Context, cli *client.Client, username string, pas
 		},
 	}
 
+	container_name := fmt.Sprintf("load_test_%d", duplicate_id)
+
 	resp, err := cli.ContainerCreate(
 		ctx,
 		container_config,
 		nil,
 		nil,
 		nil,
-		fmt.Sprintf("load_test_%d", duplicate_id),
+		container_name,
 	)
-
 	if err != nil {
 		panic(err)
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	err = cli.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	if err != nil {
 		panic(err)
 	}
 }
@@ -60,7 +63,13 @@ func main() {
 	}
 	defer cli.Close()
 
-	for i := 0; i <= 2; i++ {
-		spawnLoadTest(ctx, cli, username, password, i)
+	var wg sync.WaitGroup
+	for i := 0; i <= 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			spawnLoadTest(ctx, cli, username, password, i)
+		}()
 	}
+	wg.Wait()
 }
